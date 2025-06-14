@@ -5,6 +5,7 @@ import sys
 import json
 from datetime import datetime
 
+
 # Page configuration MUST be first
 st.set_page_config(
     page_title="Property Intelligence System",
@@ -18,7 +19,11 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
 # Load environment variables
 load_dotenv()
-
+try:
+    from ml_predictions import PropertyMLPredictor
+except ImportError:
+    st.error("ML predictions module not found. Please ensure ml_predictions.py is in the src folder.")
+    PropertyMLPredictor = None
 # Import our modules AFTER set_page_config
 try:
     from ocr_processor import PropertyOCRProcessor
@@ -320,7 +325,203 @@ def show_news_page():
 
 def show_ml_page():
     st.header("🤖 ML Predictions")
-    st.info("🚧 Module under development - Coming soon!")
+    st.markdown("Predict property values and assess investment risk using machine learning models.")
+    
+    if PropertyMLPredictor is None:
+        st.error("ML predictions module not available.")
+        return
+    
+    # Initialize ML predictor
+    if 'ml_predictor' not in st.session_state:
+        st.session_state.ml_predictor = PropertyMLPredictor()
+        # Train models with synthetic data
+        with st.spinner("Training ML models..."):
+            synthetic_data = st.session_state.ml_predictor.generate_synthetic_data(1000)
+            st.session_state.ml_predictor.train_valuation_model(synthetic_data)
+            st.session_state.ml_predictor.train_risk_model(synthetic_data)
+        st.success("✅ ML models trained successfully!")
+    
+    ml_predictor = st.session_state.ml_predictor
+    
+    # Property input form
+    st.subheader("🏠 Property Details")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        property_type = st.selectbox(
+            "Property Type:",
+            ['Single Family', 'Condo', 'Townhouse', 'Multi-Family', 'Commercial']
+        )
+        location = st.selectbox(
+            "Location:",
+            ['Chicago', 'Hinsdale', 'Oak Brook', 'Naperville', 'Wheaton', 'Glen Ellyn', 'Downers Grove']
+        )
+        sq_footage = st.number_input("Square Footage:", min_value=500, max_value=50000, value=2500)
+        year_built = st.number_input("Year Built:", min_value=1900, max_value=2024, value=2000)
+    
+    with col2:
+        bedrooms = st.number_input("Bedrooms:", min_value=0, max_value=10, value=3)
+        bathrooms = st.number_input("Bathrooms:", min_value=1.0, max_value=10.0, value=2.5, step=0.5)
+        lot_size = st.number_input("Lot Size (acres):", min_value=0.1, max_value=10.0, value=0.5, step=0.1)
+    
+    # Predict button
+    if st.button("🔮 Generate Predictions", type="primary"):
+        # Prepare property data
+        property_data = {
+            'property_type': property_type,
+            'location': location,
+            'sq_footage': sq_footage,
+            'bedrooms': bedrooms,
+            'bathrooms': bathrooms,
+            'year_built': year_built,
+            'lot_size': lot_size,
+            'estimated_value': 0  # Will be predicted
+        }
+        
+        with st.spinner("Generating ML predictions..."):
+            # Get predictions
+            valuation_result = ml_predictor.predict_property_value(property_data)
+            risk_result = ml_predictor.predict_risk_score(property_data)
+            
+            # Generate insights
+            investment_insights = ml_predictor.generate_investment_insights(
+                property_data, valuation_result, risk_result
+            )
+        
+        st.success("✅ Predictions generated successfully!")
+        
+        # Display results in tabs
+        tab1, tab2, tab3, tab4 = st.tabs(["💰 Valuation", "⚠️ Risk Analysis", "💡 Insights", "📊 Model Info"])
+        
+        with tab1:
+            st.subheader("💰 Property Valuation")
+            
+            # Main prediction
+            predicted_value = valuation_result['predicted_value']
+            confidence = valuation_result['confidence']
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Predicted Value", f"${predicted_value:,.0f}")
+            with col2:
+                st.metric("Confidence", f"{confidence:.1%}")
+            with col3:
+                st.metric("Price/Sq Ft", f"${predicted_value/sq_footage:.0f}")
+            
+            # Price range
+            price_range = valuation_result['price_range']
+            st.subheader("📊 Value Range")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Low Estimate", f"${price_range['low']:,.0f}")
+            with col2:
+                st.metric("High Estimate", f"${price_range['high']:,.0f}")
+            
+            # Valuation chart
+            val_chart = ml_predictor.create_valuation_chart(property_data, valuation_result)
+            st.plotly_chart(val_chart, use_container_width=True)
+        
+        with tab2:
+            st.subheader("⚠️ Investment Risk Analysis")
+            
+            # Risk metrics
+            risk_score = risk_result['risk_score']
+            risk_category = risk_result['risk_category']
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Risk Score", f"{risk_score:.1%}")
+            with col2:
+                st.metric("Risk Category", risk_category)
+            
+            # Risk gauge
+            risk_chart = ml_predictor.create_risk_gauge(risk_result)
+            st.plotly_chart(risk_chart, use_container_width=True)
+        
+        with tab3:
+            st.subheader("💡 Investment Insights & Recommendations")
+            
+            # Investment grade
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Investment Grade", investment_insights['investment_grade'])
+            with col2:
+                st.metric("Overall Score", investment_insights['summary_score'])
+            
+            # Insights
+            st.subheader("🔍 Key Insights")
+            for insight in investment_insights['insights']:
+                st.write(f"• {insight}")
+            
+            # Recommendations
+            st.subheader("🎯 Recommendations")
+            for rec in investment_insights['recommendations']:
+                st.write(f"• {rec}")
+        
+        with tab4:
+            st.subheader("📊 Model Performance & Feature Importance")
+            
+            # Feature importance chart
+            importance_chart = ml_predictor.create_feature_importance_chart()
+            if importance_chart:
+                st.plotly_chart(importance_chart, use_container_width=True)
+            
+            # Model details
+            st.subheader("🔧 Model Details")
+            st.write("**Valuation Model:** Random Forest Regressor")
+            st.write("**Risk Model:** Gradient Boosting Regressor")
+            st.write("**Training Data:** 1,000 synthetic property records")
+            st.write("**Features Used:** Square footage, bedrooms, bathrooms, age, location, property type")
+        
+        # Save results
+        st.subheader("💾 Save Results")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("💾 Save Prediction"):
+                results = {
+                    'valuation': valuation_result,
+                    'risk': risk_result,
+                    'insights': investment_insights
+                }
+                saved_path = ml_predictor.save_prediction_results(property_data, results)
+                if saved_path:
+                    st.success(f"✅ Prediction saved to: {saved_path}")
+        
+        with col2:
+            # Download results
+            results_data = {
+                'property': property_data,
+                'valuation': valuation_result,
+                'risk': risk_result,
+                'insights': investment_insights
+            }
+            json_data = json.dumps(results_data, indent=2, default=str)
+            st.download_button(
+                label="📥 Download Results",
+                data=json_data,
+                file_name=f"ml_prediction_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                mime="application/json"
+            )
+    
+    else:
+        st.info("👆 Enter property details and click 'Generate Predictions' to start analysis")
+        
+        # Show sample predictions
+        st.subheader("📋 Sample Prediction Preview")
+        st.markdown("""
+        **Example properties to try:**
+        - **Single Family in Hinsdale**: 3,000 sq ft, 4 bed, 3 bath, built 2010
+        - **Condo in Chicago**: 1,200 sq ft, 2 bed, 2 bath, built 2015  
+        - **Commercial in Oak Brook**: 10,000 sq ft, 0 bed, 5 bath, built 2000
+        
+        **The ML analysis provides:**
+        - Property valuation with confidence intervals
+        - Investment risk scoring and categorization
+        - Feature importance analysis
+        - Actionable investment recommendations
+        """)
 
 def show_qa_page():
     st.header("💬 Q&A System")
