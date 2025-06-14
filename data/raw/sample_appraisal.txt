@@ -1,0 +1,22 @@
+REAL ESTATE APPRAISAL REPORT
+
+Subject Property: 123 Maple Street, Oak Brook, IL 60523
+Property Type: Single Family Residential
+Year Built: 1995
+Square Footage: 2,450 sq ft
+Lot Size: 0.75 acres
+Bedrooms: 4 bedrooms
+Bathrooms: 2.5 bathrooms
+
+VALUATION SUMMARY
+Appraised Value: $485,000
+Appraisal Date: 03/15/2024
+Market Approach Value: $485,000
+Cost Approach Value: $478,000
+Income Approach: Not Applicable
+
+PROPERTY DESCRIPTION
+The subject is a well-maintained single family residence located in Oak Brook, Illinois.
+The property features 4 bedrooms, 2.5 bathrooms, and sits on a 0.75-acre lot.
+Construction year: 1995
+Total living area: 2,450 square feet
