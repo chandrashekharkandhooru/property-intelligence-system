@@ -20,6 +20,11 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 # Load environment variables
 load_dotenv()
 try:
+    from qa_system import PropertyQASystem
+except ImportError:
+    st.error("Q&A system module not found. Please ensure qa_system.py is in the src folder.")
+    PropertyQASystem = None
+try:
     from ml_predictions import PropertyMLPredictor
 except ImportError:
     st.error("ML predictions module not found. Please ensure ml_predictions.py is in the src folder.")
@@ -525,7 +530,178 @@ def show_ml_page():
 
 def show_qa_page():
     st.header("💬 Q&A System")
-    st.info("🚧 Module under development - Coming soon!")
+    st.markdown("Ask questions about your property data using our conversational AI system.")
+    
+    if PropertyQASystem is None:
+        st.error("Q&A system module not available.")
+        return
+    
+    # Initialize Q&A system
+    if 'qa_system' not in st.session_state:
+        with st.spinner("Initializing Q&A system and loading knowledge base..."):
+            st.session_state.qa_system = PropertyQASystem()
+        st.success("✅ Q&A system ready!")
+    
+    if 'conversation_history' not in st.session_state:
+        st.session_state.conversation_history = []
+    
+    qa_system = st.session_state.qa_system
+    
+    # Conversation starters
+    st.subheader("💡 Suggested Questions")
+    starters = qa_system.get_conversation_starters()
+    
+    cols = st.columns(2)
+    for i, starter in enumerate(starters):
+        col_idx = i % 2
+        with cols[col_idx]:
+            if st.button(f"💭 {starter}", key=f"starter_{i}"):
+                st.session_state.current_question = starter
+    
+    # Question input
+    st.subheader("🗣️ Ask Your Question")
+    
+    # Use session state for question if set by button
+    default_question = st.session_state.get('current_question', '')
+    
+    question = st.text_input(
+        "Enter your property intelligence question:",
+        value=default_question,
+        placeholder="e.g., What factors affect property values in Hinsdale?"
+    )
+    
+    # Clear the session state question after displaying
+    if 'current_question' in st.session_state:
+        del st.session_state.current_question
+    
+    # Ask button
+    if st.button("🔍 Ask Question", type="primary") and question:
+        with st.spinner("Searching knowledge base and generating answer..."):
+            # Search for relevant context
+            context_results = qa_system.search_knowledge(question, n_results=3)
+            
+            # Generate answer
+            answer = qa_system.generate_answer(question, context_results)
+            
+            # Add to conversation history
+            conversation_item = {
+                'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                'question': question,
+                'answer': answer,
+                'context_sources': len(context_results)
+            }
+            st.session_state.conversation_history.append(conversation_item)
+        
+        # Display answer
+        st.success("✅ Answer generated!")
+        
+        # Create answer tabs
+        tab1, tab2, tab3 = st.tabs(["💬 Answer", "📚 Sources", "🔍 Context"])
+        
+        with tab1:
+            st.subheader("📝 Answer")
+            st.markdown(answer)
+            
+            # Quick actions
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("👍 Helpful"):
+                    st.success("Thanks for the feedback!")
+            with col2:
+                if st.button("👎 Not Helpful"):
+                    st.info("We'll work on improving our responses!")
+        
+        with tab2:
+            st.subheader("📚 Knowledge Sources")
+            if context_results:
+                for i, result in enumerate(context_results, 1):
+                    with st.expander(f"Source {i}: {result['metadata'].get('topic', 'Unknown')}"):
+                        st.write(f"**Category:** {result['metadata'].get('topic', 'N/A')}")
+                        st.write(f"**Source:** {result['metadata'].get('source', 'N/A')}")
+                        st.write(f"**Relevance Score:** {1 - result.get('distance', 0):.2f}")
+                        st.text_area("Content:", result['content'], height=100, disabled=True)
+            else:
+                st.info("No specific sources found - using general knowledge.")
+        
+        with tab3:
+            st.subheader("🔍 Search Context")
+            st.write(f"**Question:** {question}")
+            st.write(f"**Sources Found:** {len(context_results)}")
+            st.write(f"**Knowledge Base Size:** {qa_system.collection.count() if qa_system.collection else 0} items")
+            
+            # Show knowledge base categories
+            if context_results:
+                categories = list(set([r['metadata'].get('topic', 'Unknown') for r in context_results]))
+                st.write(f"**Relevant Categories:** {', '.join(categories)}")
+    
+    # Conversation History
+    if st.session_state.conversation_history:
+        st.subheader("📜 Conversation History")
+        
+        # Option to clear history
+        col1, col2 = st.columns([3, 1])
+        with col2:
+            if st.button("🗑️ Clear History"):
+                st.session_state.conversation_history = []
+                st.experimental_rerun()
+        
+        # Display conversation
+        for i, item in enumerate(reversed(st.session_state.conversation_history[-5:]), 1):  # Show last 5
+            with st.expander(f"Q{len(st.session_state.conversation_history)-i+1}: {item['question'][:60]}..."):
+                st.write(f"**Time:** {item['timestamp']}")
+                st.write(f"**Question:** {item['question']}")
+                st.write(f"**Answer:** {item['answer'][:200]}..." if len(item['answer']) > 200 else item['answer'])
+                st.write(f"**Sources Used:** {item['context_sources']}")
+        
+        # Save conversation
+        if st.button("💾 Save Conversation"):
+            saved_path = qa_system.save_conversation(st.session_state.conversation_history)
+            if saved_path:
+                st.success(f"✅ Conversation saved to: {saved_path}")
+        
+        # Download conversation
+        json_data = json.dumps(st.session_state.conversation_history, indent=2, default=str)
+        st.download_button(
+            label="📥 Download Conversation",
+            data=json_data,
+            file_name=f"qa_conversation_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+            mime="application/json"
+        )
+    
+    else:
+        st.info("👆 Ask a question to start the conversation!")
+        
+        # Show system capabilities
+        st.subheader("🤖 System Knowledge Base")
+        st.markdown("""
+        **The Q&A system can answer questions about:**
+        
+        **🏠 Property Data:**
+        - Extracted OCR data from your documents
+        - Property characteristics and valuations
+        - Sample data: Hinsdale Middle School Complex
+        
+        **📊 Market Intelligence:**
+        - Market trends and analysis
+        - Location-specific insights
+        - Investment recommendations
+        
+        **🤖 ML Predictions:**
+        - Property valuation methods
+        - Risk assessment factors
+        - Model performance and accuracy
+        
+        **📚 General Knowledge:**
+        - Property types and characteristics
+        - Valuation methodologies
+        - Investment strategies
+        
+        **💡 Try asking about:**
+        - Specific properties or locations
+        - Market conditions and trends
+        - System capabilities and features
+        - Investment advice and risk factors
+        """)
 
 if __name__ == "__main__":
     main()
